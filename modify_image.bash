@@ -107,6 +107,7 @@ sudo sed -i "s/HERE_YOUR_SSH_KEY/$(sed 's:/:\\/:g' ${ssh_file})/" ${new_cloud_fi
 echo "making copy of entire disk"
 sudo rm -rf mod_disk
 sudo cp -ax orig_disk mod_disk
+sudo umount orig_disk
 
 # squash the modified files
 echo "squashing the modified installer file system"

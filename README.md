@@ -29,3 +29,10 @@ Run the script like so:
 chmod a+x ./modify_image.bash
 ./modify_image.bash -i ubuntu-22.04.3-live-server-amd64.iso -o hacked_image.iso -w /path/to/my/working/directory -k my_gpg_key -s ~/.ssh/id_rsa.pub
 ```
+
+Don't forget to execute the ``xorriso`` line as printed out at the end
+of the script. That command will create the modified iso image.
+
+If you hit errors and end up with "unerasable" files, check with
+``df`` for mounted loop file systems and ``sudo unmount`` the
+offending one.
