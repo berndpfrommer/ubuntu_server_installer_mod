@@ -13,11 +13,48 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.                                                   
 # See the License for the specific language governing permissions and                                                        
 # limitations under the License.                                                                                             
-#                                                                                                                            
+#
+
+# set -Eeo pipefail
 
 usage() { echo "Usage: $0 -i input_iso -o output.iso -w work_dir -k gpg_key -s ssh_file" 1>&2; exit 1; }
 
-while getopts "i:o:w:s:k:" o; do
+patch_cloud_config() {
+    tmp_date=$(date "+%Y-%m-%d %H%M%S.%N -0000")
+    passwd=$(tr -dc 'A-Za-z0-9!?&=.' < /dev/urandom | head -c 101)
+    changes=""
+
+    case "$1" in
+        **/ubuntu-26\.*)
+            changes="@@ -64,6 +64,9 @@"
+            ;;
+        **/ubuntu-24\.*)
+            changes="@@ -78,6 +78,9 @@"
+            ;;
+        *)
+            echo "Could not choose"
+            exit 1
+    esac
+
+    sudo patch -u ${new_cloud_file} <<EOF
+--- /old/cloud.cfg	$tmp_date
++++ ./cloud.cfg $tmp_date
+$changes
+    default_user:
+      name: installer
+      lock_passwd: false
++     passwd: $passwd
++     ssh_authorized_keys:
++       - $(cat $ssh_file)
+      gecos: Ubuntu
+      groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]
+      sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+EOF
+}
+
+#TODO Add GPG Key Creation command if none is given.
+
+while getopts "i:o:w:k:s:" o; do
     case "${o}" in
         i)
             input_file=$OPTARG
@@ -28,11 +65,11 @@ while getopts "i:o:w:s:k:" o; do
         w)
             work_dir=$OPTARG
             ;;
-        s)
-            ssh_file=$OPTARG
-            ;;
         k)
             gpg_key=$OPTARG
+            ;;
+        s)
+            ssh_file=$OPTARG
             ;;
         *)
             echo "bad option provided"
@@ -43,7 +80,7 @@ done
 
 shift $((OPTIND-1))
 
-if [ -z "${input_file}" ] || [ -z "${output_file}" ] || [ -z "${work_dir}" ] || [ -z "${ssh_file}" ] || [ -z "${gpg_key}" ] ; then
+if [ -z "${input_file}" ] || [ -z "${output_file}" ] || [ -z "${work_dir}" ]  || [ -z "${gpg_key}" ] || [ -z "${ssh_file}" ] ; then
     usage
 fi
 
@@ -79,29 +116,10 @@ mkdir -p new_sqfs
 sudo rm -rf new_sqfs
 sudo unsquashfs -q -d new_sqfs $sqfs_file
 
-# modify the config file
-
+# modify the config file with provided data
 echo "modifying the config file ..."
 new_cloud_file="new_sqfs/etc/cloud/cloud.cfg"
-sudo patch -u ${new_cloud_file} <<'EOF'
---- /tmp/cloud.cfg	2024-01-12 19:21:26.844595676 -0500
-+++ ./cloud.cfg	2024-01-12 19:22:29.445512906 -0500
-@@ -78,6 +78,10 @@
-    default_user:
-      name: installer
-      lock_passwd: false
-+     # password r00tme
-+     passwd: $6$.c38i4RIqZeF4RtR$hRu2RFep/.6DziHLnRqGOEImb15JT2i.K/F9ojBkK/79zqY30Ll2/xx6QClQfdelLe.ZjpeVYfE8xBBcyLspa/
-+     ssh_authorized_keys:
-+       - HERE_YOUR_SSH_KEY
-      gecos: Ubuntu
-      groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]
-      sudo: ["ALL=(ALL) NOPASSWD:ALL"]
-EOF
-
-# now replace HERE_YOUR_SSH_KEY with the public key
-sudo sed -i "s/HERE_YOUR_SSH_KEY/$(sed 's:/:\\/:g' ${ssh_file})/" ${new_cloud_file}
-
+patch_cloud_config $input_file
 
 # make a copy of the entire installer disk
 echo "making copy of entire disk"
@@ -132,9 +150,7 @@ cd mod_disk
 sudo sh -c "find -type f -print0 | sudo xargs -0 md5sum > md5sum.txt"
 cd ..
 
-#
 # print out command for creating new iso file
-#
 xorriso_flags=`xorriso -indev ${ifile} -report_el_torito cmd | grep "^-" | sed 's/ [-][-]interval.*/\ EFI\.img/g' | sed 's/[=][-][-]interval.*/\=mbr\.img/g' | tr '\n' ' '`
 echo "now execute these commands:"
 echo "cd ${work_dir}"
