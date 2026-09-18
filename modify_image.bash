@@ -17,7 +17,24 @@
 
 # set -Eeo pipefail
 
-usage() { echo "Usage: $0 -i input_iso -o output.iso -w work_dir -k gpg_key -s ssh_file" 1>&2; exit 1; }
+usage() { 
+    echo "Usage: $0 [OPTIONS]";
+    echo "";
+    echo "Create a modified ISO of Ubuntu installer that allows remote installation";
+    echo "";
+    echo "Options:";
+    echo "  -h      Print this help";
+    echo "  -i      Ubuntu ISO that will be used as reference";
+    echo "  -o      Desired name for the final ISO file";
+    echo "  -w      Working directory for the operation (default: ./)";
+    echo "  -k      Your GPG key to sign the modified ISO";
+    echo "  -s      The public SSH key used to remote into the installer";
+    echo "  -v      Ubuntu version (24 | 26)";
+    echo "";
+    echo "Examples:";
+    echo "  $0 -i input_iso -o output.iso -w work_dir -k gpg_key -s ssh_file"
+    exit 1;
+}
 
 patch_cloud_config() {
     tmp_date=$(date "+%Y-%m-%d %H%M%S.%N -0000")
@@ -32,8 +49,18 @@ patch_cloud_config() {
             changes="@@ -78,6 +78,9 @@"
             ;;
         *)
-            echo "Could not choose"
+            case ubuntu_version in
+                26)
+                    changes="@@ -64,6 +64,9 @@"
+                    ;;
+                24)
+                    changes="@@ -78,6 +78,9 @@"
+                    ;;
+                *)
+                    echo "No Ubuntu version specified and could not determine version"
+                    echo "from input file. Exiting program."
             exit 1
+            esac
     esac
 
     sudo patch -u ${new_cloud_file} <<EOF
@@ -54,7 +81,7 @@ EOF
 
 #TODO Add GPG Key Creation command if none is given.
 
-while getopts "i:o:w:k:s:" o; do
+while getopts "i:o:w:k:s:v:h" o; do
     case "${o}" in
         i)
             input_file=$OPTARG
@@ -71,8 +98,15 @@ while getopts "i:o:w:k:s:" o; do
         s)
             ssh_file=$OPTARG
             ;;
+        v)
+            ubuntu_version=$OPTARG
+            ;;
+        h)
+            usage
+            ;;
         *)
-            echo "bad option provided"
+            echo "--bad option provided--"
+            echo ""
             usage
             ;;
     esac
@@ -80,7 +114,7 @@ done
 
 shift $((OPTIND-1))
 
-if [ -z "${input_file}" ] || [ -z "${output_file}" ] || [ -z "${work_dir}" ]  || [ -z "${gpg_key}" ] || [ -z "${ssh_file}" ] ; then
+if [ -z "${input_file}" ] || [ -z "${output_file}" ] || [ -z "${work_dir}" ] || [ -z "${gpg_key}" ] || [ -z "${ssh_file}" ] ; then
     usage
 fi
 
